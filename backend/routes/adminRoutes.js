@@ -13,6 +13,7 @@ const {
     getCategories, createCategory, createSubcategory,
     getHolidays, uploadHolidaysCSV,
 } = require('../controllers/adminController');
+const { adminClose } = require('../controllers/ticketController');
 
 // All admin routes require authentication
 router.use(authenticate);
@@ -41,6 +42,9 @@ router.post('/teams/:id/members', authorize('admin'), addTeamMember);
 router.get('/categories', authorize('admin', 'technician'), getCategories);
 router.post('/categories', authorize('admin'), createCategory);
 router.post('/subcategories', authorize('admin'), createSubcategory);
+
+// Ticket management — admin only
+router.post('/tickets/:id/close', authorize('admin'), adminClose);
 
 // Holidays
 router.get('/holidays', getHolidays);

@@ -310,7 +310,7 @@ const requestClose = async (req, res, next) => {
 };
 
 /**
- * Close a ticket with OTP verification
+ * Close a ticket with OTP verification (Technician marks as Resolved)
  * POST /api/tickets/:id/close
  */
 const closeTicket = async (req, res, next) => {
@@ -328,28 +328,85 @@ const closeTicket = async (req, res, next) => {
             return res.status(400).json({ error: 'Invalid or expired OTP.' });
         }
 
+        // Move to resolved (Done)
+        await query('SELECT sp_update_ticket_status($1, $2, $3)', [id, 'resolved', req.user.id]);
+
+        // Get ticket info for notifications
+        const ticketResult = await query('SELECT * FROM sp_get_ticket_by_id($1)', [id]);
+        const ticket = ticketResult.rows[0];
+
+        // Notify stakeholders
+        if (ticket) {
+            const notifyEmails = new Set();
+            if (ticket.creator_email) notifyEmails.add(ticket.creator_email);
+            if (ticket.assignee_email) notifyEmails.add(ticket.assignee_email);
+
+            for (const recipientEmail of notifyEmails) {
+                await sendTicketUpdatedEmail({
+                    email: recipientEmail,
+                    ticketNumber: ticket.ticket_number,
+                    title: ticket.title,
+                    status: 'Resolved (Pending Admin Closure)',
+                    updatedBy: req.user.name,
+                });
+            }
+
+            // Also notify admin(s)
+            const admins = await query("SELECT email FROM users WHERE role = 'admin' AND is_active = TRUE");
+            for (const admin of admins.rows) {
+                await sendTicketUpdatedEmail({
+                    email: admin.email,
+                    ticketNumber: ticket.ticket_number,
+                    title: ticket.title,
+                    status: 'Resolved - Ready for Final Closure',
+                    updatedBy: req.user.name,
+                });
+            }
+        }
+
+        res.json({ message: 'Ticket marked as Resolved. Awaiting admin closure.' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/**
+ * Final closure of a ticket (Admin only)
+ * POST /api/admin/tickets/:id/close
+ */
+const adminClose = async (req, res, next) => {
+    try {
+        const { id } = req.params;
+
+        // Verify ticket is resolved
+        const ticketCheck = await query('SELECT status FROM tickets WHERE id = $1', [id]);
+        if (ticketCheck.rows.length === 0) {
+            return res.status(404).json({ error: 'Ticket not found.' });
+        }
+        if (ticketCheck.rows[0].status !== 'resolved') {
+            return res.status(400).json({ error: 'Only resolved tickets can be closed by admin.' });
+        }
+
         // Close the ticket
         const result = await query('SELECT * FROM sp_close_ticket($1, $2)', [id, req.user.id]);
         const ticketInfo = result.rows[0];
 
-        // Send closure emails to all stakeholders
-        const emails = new Set();
-        if (ticketInfo.creator_email) emails.add(ticketInfo.creator_email);
-        if (ticketInfo.assignee_email) emails.add(ticketInfo.assignee_email);
+        // Send closure emails
+        if (ticketInfo) {
+            const emails = new Set();
+            if (ticketInfo.creator_email) emails.add(ticketInfo.creator_email);
+            if (ticketInfo.assignee_email) emails.add(ticketInfo.assignee_email);
 
-        // Also notify admin(s)
-        const admins = await query("SELECT email FROM users WHERE role = 'admin' AND is_active = TRUE");
-        admins.rows.forEach(a => emails.add(a.email));
-
-        for (const recipientEmail of emails) {
-            await sendTicketClosedEmail({
-                email: recipientEmail,
-                ticketNumber: ticketInfo.ticket_number,
-                title: ticketInfo.ticket_title,
-            });
+            for (const recipientEmail of emails) {
+                await sendTicketClosedEmail({
+                    email: recipientEmail,
+                    ticketNumber: ticketInfo.ticket_number,
+                    title: ticketInfo.ticket_title,
+                });
+            }
         }
 
-        res.json({ message: 'Ticket closed successfully.' });
+        res.json({ message: 'Ticket closed successfully by admin.' });
     } catch (error) {
         next(error);
     }
@@ -465,7 +522,7 @@ const getFormFields = async (req, res, next) => {
 module.exports = {
     createTicket, getTickets, getTicketById,
     addInteraction, uploadFiles,
-    requestClose, closeTicket,
+    requestClose, closeTicket, adminClose,
     submitFeedback, addItem,
     getCategories, getFormFields,
 };

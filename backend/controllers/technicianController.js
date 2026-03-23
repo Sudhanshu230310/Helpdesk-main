@@ -100,7 +100,14 @@ const updateTicketStatus = async (req, res, next) => {
         const validStatuses = ['open', 'in_progress', 'with_user', 'resolved'];
         if (!status || !validStatuses.includes(status)) {
             return res.status(400).json({
-                error: `Status must be one of: ${validStatuses.join(', ')}. Use the close endpoint to close tickets.`,
+                error: `Status must be one of: ${validStatuses.join(', ')}.`,
+            });
+        }
+
+        // Techs cannot manually set to resolved (must use OTP)
+        if (req.user.role === 'technician' && status === 'resolved') {
+            return res.status(400).json({
+                error: 'Technicians cannot manually resolve tickets. Use the "Mark Done" button to send an OTP to the user.',
             });
         }
 

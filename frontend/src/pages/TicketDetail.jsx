@@ -146,6 +146,16 @@ const TicketDetail = ({ showNotification }) => {
         }
     };
 
+    const handleAdminResolve = async () => {
+        try {
+            await API.put(`/technicians/tickets/${id}/status`, { status: 'resolved' });
+            fetchTicket();
+            showNotification('Ticket marked as Resolved!');
+        } catch (err) {
+            showNotification(err.response?.data?.error || 'Failed to resolve ticket.', 'error');
+        }
+    };
+
     const handleRequestClose = async () => {
         try {
             const res = await API.post(`/tickets/${id}/request-close`);
@@ -165,7 +175,17 @@ const TicketDetail = ({ showNotification }) => {
         await API.post(`/tickets/${id}/close`, { otp, email: actualEmail });
         setShowOtp(false);
         fetchTicket();
-        showNotification('Ticket closed successfully!');
+        showNotification('Ticket marked as Done (Resolved)! Awaiting admin closure.');
+    };
+
+    const handleAdminClose = async () => {
+        try {
+            await API.post(`/admin/tickets/${id}/close`);
+            fetchTicket();
+            showNotification('Ticket closed successfully!');
+        } catch (err) {
+            showNotification(err.response?.data?.error || 'Failed to close ticket.', 'error');
+        }
     };
 
     const handleSubmitFeedback = async (rating, comment) => {
@@ -470,7 +490,7 @@ const TicketDetail = ({ showNotification }) => {
                                         <option value="open">Open</option>
                                         <option value="in_progress">In Progress</option>
                                         <option value="with_user">With User</option>
-                                        <option value="resolved">Resolved</option>
+                                        {user?.role === 'admin' && <option value="resolved">Resolved</option>}
                                     </select>
                                     <button onClick={handleStatusUpdate} disabled={!newStatus} className="btn-primary text-sm px-3 disabled:opacity-30">
                                         <HiOutlinePencil className="w-4 h-4" />
@@ -493,10 +513,22 @@ const TicketDetail = ({ showNotification }) => {
                                 </div>
                             </div>
 
-                            {/* Close Ticket */}
-                            <button onClick={handleRequestClose} className="btn-danger w-full text-sm">
-                                Close Ticket (Send OTP)
-                            </button>
+                            {/* Mark Done (Technician/Admin) */}
+                            {ticket.status !== 'resolved' && (
+                                <button 
+                                    onClick={user?.role === 'admin' ? handleAdminResolve : handleRequestClose} 
+                                    className="btn-primary w-full text-sm"
+                                >
+                                    {user?.role === 'admin' ? 'Mark Done' : 'Mark Done (Send OTP)'}
+                                </button>
+                            )}
+
+                            {/* Final Close (Admin Only) */}
+                            {user?.role === 'admin' && ticket.status === 'resolved' && (
+                                <button onClick={handleAdminClose} className="btn-danger w-full text-sm">
+                                    Final Close Ticket
+                                </button>
+                            )}
                         </div>
                     )}
 

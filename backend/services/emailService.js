@@ -38,6 +38,8 @@ const sendOtpEmail = async (email, otp, purpose = 'registration') => {
     ? 'complete your registration'
     : 'close your ticket';
 
+  console.log(`🔐 [OTP] For: ${email} | OTP: ${otp} | Purpose: ${purpose}`);
+
   return sendEmail({
     to: email,
     subject: `Helpdesk — OTP Verification (${otp})`,
